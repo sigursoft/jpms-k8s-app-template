@@ -12,6 +12,10 @@
 
     <artifactId>jpms-k8s-app</artifactId>
 
+    <properties>
+        <app.main.class>com.sigursoft.jpms.k8s.app.Application</app.main.class>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.mariadb.jdbc</groupId>
@@ -36,7 +40,7 @@
                         <manifest>
                             <addClasspath>true</addClasspath>
                             <classpathPrefix>lib/</classpathPrefix>
-                            <mainClass>com.sigursoft.jpms.k8s.app.Application</mainClass>
+                            <mainClass>${app.main.class}</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -54,6 +58,29 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.spotify</groupId>
+                <artifactId>dockerfile-maven-plugin</artifactId>
+                <version>1.4.13</version>
+                <executions>
+                    <execution>
+                        <id>default</id>
+                        <goals>
+                            <goal>build</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <repository>sigursoft/jpms-k8s-app</repository>
+                    <tag>${project.version}</tag>
+                    <buildArgs>
+                        <MODULE>jpms.k8s.app</MODULE>
+                        <CLASS>${app.main.class}</CLASS>
+                        <JVM_OPTS>-XX:MinRAMPercentage=50 -XX:MaxRAMPercentage=80 -XshowSettings:vm -Djava.security.egd=file:/dev/./urandom</JVM_OPTS>
+                        <JAR_FILE>${project.build.finalName}.jar</JAR_FILE>
+                    </buildArgs>
+                </configuration>
             </plugin>
         </plugins>
     </build>

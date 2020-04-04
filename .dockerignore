@@ -1,4 +1,0 @@
-*
-!jpms-k8s-app/target/*.jar
-!jpms-k8s-app/target/lib/*
-!pom.xml
