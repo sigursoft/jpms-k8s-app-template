@@ -8,7 +8,7 @@
     <version>0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>JPMS Kubernetes Applications</name>
-    <description>Example Kuberntes Applications build with Java Platform Module System</description>
+    <description>Example Kubernetes Applications build with Java Platform Module System</description>
 
     <properties>
         <maven.compiler.source>14</maven.compiler.source>
