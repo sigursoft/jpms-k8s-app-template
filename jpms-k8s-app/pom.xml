@@ -16,6 +16,14 @@
         <app.main.class>com.sigursoft.jpms.k8s.app.Application</app.main.class>
     </properties>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.joda</groupId>
+            <artifactId>joda-money</artifactId>
+            <version>1.0.1</version>
+        </dependency>
+    </dependencies>
+
     <build>
         <plugins>
             <plugin>
@@ -46,57 +54,70 @@
                     </execution>
                 </executions>
             </plugin>
-            <plugin>
-                <groupId>org.moditect</groupId>
-                <artifactId>moditect-maven-plugin</artifactId>
-                <version>1.0.0.RC1</version>
-                <executions>
-                    <execution>
-                        <id>create-runtime-image</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>create-runtime-image</goal>
-                        </goals>
-                        <configuration>
-                            <modulePath>
-                                <path>${project.build.directory}/${project.build.finalName}.jar</path>
-                                <path>${project.build.directory}/lib</path>
-                            </modulePath>
-                            <modules>
-                                <module>jpms.k8s.app</module>
-                            </modules>
-                            <outputDirectory>
-                                ${project.build.directory}/jlink-image
-                            </outputDirectory>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>com.spotify</groupId>
-                <artifactId>dockerfile-maven-plugin</artifactId>
-                <version>1.4.13</version>
-                <executions>
-                    <execution>
-                        <id>create-docker-image</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>build</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <repository>sigursoft/jpms-k8s-app</repository>
-                    <tag>${project.version}</tag>
-                    <buildArgs>
-                        <MODULE>jpms.k8s.app</MODULE>
-                        <CLASS>${app.main.class}</CLASS>
-                        <JVM_OPTS>-XX:MinRAMPercentage=50 -XX:MaxRAMPercentage=70 -Djava.security.egd=file:/dev/./urandom</JVM_OPTS>
-                        <JAR_FILE>${project.build.finalName}.jar</JAR_FILE>
-                    </buildArgs>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
+
+     <profiles>
+        <profile>
+            <id>docker</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.moditect</groupId>
+                        <artifactId>moditect-maven-plugin</artifactId>
+                        <version>1.0.0.RC1</version>
+                        <executions>
+                            <execution>
+                                <id>create-runtime-image</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>create-runtime-image</goal>
+                                </goals>
+                                <configuration>
+                                    <modulePath>
+                                        <path>${project.build.directory}/${project.build.finalName}.jar</path>
+                                        <path>${project.build.directory}/lib</path>
+                                    </modulePath>
+                                    <modules>
+                                        <module>jpms.k8s.app</module>
+                                    </modules>
+                                    <noManPages>true</noManPages>
+                                    <noHeaderFiles>true</noHeaderFiles>
+                                    <compression>2</compression>
+                                    <outputDirectory>
+                                        ${project.build.directory}/jlink
+                                    </outputDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>com.spotify</groupId>
+                        <artifactId>dockerfile-maven-plugin</artifactId>
+                        <version>1.4.13</version>
+                        <executions>
+                            <execution>
+                                <id>create-docker-image</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <repository>sigursoft/jpms-k8s-app</repository>
+                            <tag>${project.version}</tag>
+                            <buildArgs>
+                                <MODULE>jpms.k8s.app</MODULE>
+                                <CLASS>${app.main.class}</CLASS>
+                                <JVM_OPTS>-XX:MinRAMPercentage=50 -XX:MaxRAMPercentage=70 -Djava.security.egd=file:/dev/./urandom</JVM_OPTS>
+                                <JAR_FILE>${project.build.finalName}.jar</JAR_FILE>
+                            </buildArgs>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

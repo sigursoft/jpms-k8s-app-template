@@ -15,6 +15,6 @@ WORKDIR /app
 VOLUME /app/config
 
 ENTRYPOINT ["/bin/bash","-c"]
-CMD ["/app/image/bin/java ${JVM_OPTS} -m ${APP_MODULE}/${MAIN_CLASS}"]
+CMD ["/app/jvm/bin/java ${JVM_OPTS} -m ${APP_MODULE}/${MAIN_CLASS}"]
 
-ADD ./target/jlink-image image
+ADD ./target/jlink jvm
