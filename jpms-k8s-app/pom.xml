@@ -16,19 +16,6 @@
         <app.main.class>com.sigursoft.jpms.k8s.app.Application</app.main.class>
     </properties>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.mariadb.jdbc</groupId>
-            <artifactId>mariadb-java-client</artifactId>
-            <version>2.6.0</version>
-        </dependency>
-        <dependency>
-            <groupId>commons-dbutils</groupId>
-            <artifactId>commons-dbutils</artifactId>
-            <version>1.7</version>
-        </dependency>
-    </dependencies>
-
     <build>
         <plugins>
             <plugin>
@@ -60,12 +47,39 @@
                 </executions>
             </plugin>
             <plugin>
+                <groupId>org.moditect</groupId>
+                <artifactId>moditect-maven-plugin</artifactId>
+                <version>1.0.0.RC1</version>
+                <executions>
+                    <execution>
+                        <id>create-runtime-image</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>create-runtime-image</goal>
+                        </goals>
+                        <configuration>
+                            <modulePath>
+                                <path>${project.build.directory}/${project.build.finalName}.jar</path>
+                                <path>${project.build.directory}/lib</path>
+                            </modulePath>
+                            <modules>
+                                <module>jpms.k8s.app</module>
+                            </modules>
+                            <outputDirectory>
+                                ${project.build.directory}/jlink-image
+                            </outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>com.spotify</groupId>
                 <artifactId>dockerfile-maven-plugin</artifactId>
                 <version>1.4.13</version>
                 <executions>
                     <execution>
-                        <id>default</id>
+                        <id>create-docker-image</id>
+                        <phase>package</phase>
                         <goals>
                             <goal>build</goal>
                         </goals>
@@ -77,7 +91,7 @@
                     <buildArgs>
                         <MODULE>jpms.k8s.app</MODULE>
                         <CLASS>${app.main.class}</CLASS>
-                        <JVM_OPTS>-XX:MinRAMPercentage=50 -XX:MaxRAMPercentage=80 -XshowSettings:vm -Djava.security.egd=file:/dev/./urandom</JVM_OPTS>
+                        <JVM_OPTS>-XX:MinRAMPercentage=50 -XX:MaxRAMPercentage=70 -Djava.security.egd=file:/dev/./urandom</JVM_OPTS>
                         <JAR_FILE>${project.build.finalName}.jar</JAR_FILE>
                     </buildArgs>
                 </configuration>
