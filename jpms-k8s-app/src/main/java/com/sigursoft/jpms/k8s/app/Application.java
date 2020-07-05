@@ -1,6 +1,5 @@
 package com.sigursoft.jpms.k8s.app;
 
-import com.sigursoft.jpms.k8s.json.JSONObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -20,9 +19,8 @@ public class Application {
 
     public static void main(String[] args) {
         LOGGER.info("Starting server");
-        JSONObject json = new JSONObject();
-        json.put("Key", "Value");
-        LOGGER.info(String.format("JSON : %s", json.toString()));
+        var result = 1 + 1;
+        LOGGER.info(String.format("Result of computation : %d", result));
         forEach(exchange -> {
             String path = exchange.getRequestURI().toString();
             if (ROOT_CONTEXT_PATH.equals(path)) {
