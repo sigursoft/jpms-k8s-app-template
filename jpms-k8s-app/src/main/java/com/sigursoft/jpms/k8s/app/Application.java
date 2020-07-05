@@ -8,6 +8,8 @@ public class Application {
 
     public static void main(String[] args) {
         LOGGER.info("Hello From JPMS K8s sample application.");
+        var result = 1 + 1;
+        LOGGER.info(String.format("Result of the computation: %d", result));
     }
 
 }
