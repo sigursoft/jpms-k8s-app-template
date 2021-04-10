@@ -7,6 +7,8 @@ module jpms.k8s.app {
     requires java.net.http;
     // for https
     requires jdk.crypto.ec;
-    // safe money utils
-    requires org.joda.money;
+    // slf4j
+    requires org.slf4j;
+    requires org.slf4j.jul;
+    requires com.fasterxml.jackson.core;
 }

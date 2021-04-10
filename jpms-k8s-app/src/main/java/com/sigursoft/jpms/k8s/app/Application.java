@@ -1,28 +1,29 @@
 package com.sigursoft.jpms.k8s.app;
 
-import com.sigursoft.jpms.k8s.json.JSONObject;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import org.joda.money.Money;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.logging.Logger;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class Application {
 
     public static void main(String[] args) {
+        JsonFactory factory = new JsonFactory();
+        factory.enable(JsonParser.Feature.ALLOW_COMMENTS);
+
         LOGGER.info("Starting server");
-        JSONObject json = new JSONObject();
-        json.put("Key", "Value");
-        LOGGER.info(String.format("JSON : %s", json.toString()));
         forEach(exchange -> {
             String path = exchange.getRequestURI().toString();
             if (ROOT_CONTEXT_PATH.equals(path)) {
@@ -49,7 +50,7 @@ public class Application {
         try {
             httpServer = HttpServer.create(ADDRESS, BACKLOG);
         } catch (IOException e) {
-            LOGGER.warning("Failed to create HTTP server: " + e.getMessage());
+            LOGGER.warn("Failed to create HTTP server: " + e.getMessage());
             return;
         }
         var context = httpServer.createContext(ROOT_CONTEXT_PATH);
@@ -75,7 +76,7 @@ public class Application {
                 exchange.sendResponseHeaders(httpStatus, -1);
             }
         } catch (IOException e) {
-            LOGGER.warning("Failed to write response: " + e.getMessage());
+            LOGGER.warn("Failed to write response: " + e.getMessage());
         }
     }
 
@@ -88,13 +89,12 @@ public class Application {
                 if (is.read() == -1) break;
             }
         } catch (IOException e) {
-            LOGGER.warning("Failed to read request body: " + e.getMessage());
+            LOGGER.warn("Failed to read request body: " + e.getMessage());
         }
     }
 
-    private static final Logger LOGGER = Logger.getLogger(Application.class.toString());
-    private static final Money salary = Money.parse("USD 10000");
-    private static final byte[] ROOT_RESOURCE = ("Hello World! " + salary.toString() + "\n").getBytes(UTF_8);
+    private static final Logger LOGGER = LoggerFactory.getLogger(Application.class.getName());
+    private static final byte[] ROOT_RESOURCE = ("Hello World! \n").getBytes(UTF_8);
     private static final byte[] EMPTY_RESPONSE_BODY = new byte[0];
     private static final InetSocketAddress ADDRESS = new InetSocketAddress("0.0.0.0", 9000);
     private static final ThreadPoolExecutor threadPoolExecutor = (ThreadPoolExecutor) Executors.newFixedThreadPool(4);
