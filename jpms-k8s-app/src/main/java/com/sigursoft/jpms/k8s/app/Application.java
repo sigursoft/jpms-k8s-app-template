@@ -22,7 +22,7 @@ public class Application {
         JsonFactory factory = new JsonFactory();
         factory.enable(JsonParser.Feature.ALLOW_COMMENTS);
 
-        LOGGER.info("Starting server");
+        LOGGER.atInfo().log("Starting server");
         forEach(exchange -> {
             String path = exchange.getRequestURI().toString();
             if (ROOT_CONTEXT_PATH.equals(path)) {
@@ -42,7 +42,7 @@ public class Application {
                 respond(exchange, NOT_FOUND, EMPTY_RESPONSE_BODY);
             }
         });
-        LOGGER.info("Server started");
+        LOGGER.atInfo().log("Server started");
     }
 
     private static void forEach(HttpHandler handler) {
@@ -50,7 +50,7 @@ public class Application {
         try {
             httpServer = HttpServer.create(ADDRESS, BACKLOG);
         } catch (IOException e) {
-            LOGGER.warn("Failed to create HTTP server: {}", e.getMessage());
+            LOGGER.atWarn().addArgument(e.getMessage()).log("Failed to create HTTP server: {}");
             return;
         }
         var context = httpServer.createContext(ROOT_CONTEXT_PATH);
@@ -76,7 +76,7 @@ public class Application {
                 exchange.sendResponseHeaders(httpStatus, -1);
             }
         } catch (IOException e) {
-            LOGGER.warn("Failed to write response: {}", e.getMessage());
+            LOGGER.atWarn().addArgument(e.getMessage()).log("Failed to write response: {}");
         }
     }
 
@@ -89,7 +89,7 @@ public class Application {
                 if (is.read() == -1) break;
             }
         } catch (IOException e) {
-            LOGGER.warn("Failed to read request body: {}", e.getMessage());
+            LOGGER.atWarn().addArgument(e.getMessage()).log("Failed to read request body: {}");
         }
     }
 
