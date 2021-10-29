@@ -5,8 +5,6 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,15 +12,17 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 
+import static java.lang.System.Logger.Level;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class Application {
 
+    private static final System.Logger LOGGER = System.getLogger(Application.class.getName());
+
     public static void main(String[] args) {
         JsonFactory factory = new JsonFactory();
         factory.enable(JsonParser.Feature.ALLOW_COMMENTS);
-
-        LOGGER.atInfo().log("Starting server");
+        LOGGER.log(Level.INFO, "Starting server");
         forEach(exchange -> {
             String path = exchange.getRequestURI().toString();
             if (ROOT_CONTEXT_PATH.equals(path)) {
@@ -42,7 +42,7 @@ public class Application {
                 respond(exchange, NOT_FOUND, EMPTY_RESPONSE_BODY);
             }
         });
-        LOGGER.atInfo().log("Server started");
+        LOGGER.log(Level.INFO, "Server started");
     }
 
     private static void forEach(HttpHandler handler) {
@@ -50,7 +50,7 @@ public class Application {
         try {
             httpServer = HttpServer.create(ADDRESS, BACKLOG);
         } catch (IOException e) {
-            LOGGER.atWarn().addArgument(e.getMessage()).log("Failed to create HTTP server: {}");
+            LOGGER.log(Level.WARNING, "Failed to create HTTP server: %s", e.getMessage());
             return;
         }
         var context = httpServer.createContext(ROOT_CONTEXT_PATH);
@@ -76,7 +76,7 @@ public class Application {
                 exchange.sendResponseHeaders(httpStatus, -1);
             }
         } catch (IOException e) {
-            LOGGER.atWarn().addArgument(e.getMessage()).log("Failed to write response: {}");
+            LOGGER.log(Level.WARNING, "Failed to write response: %s", e.getMessage());
         }
     }
 
@@ -89,11 +89,9 @@ public class Application {
                 if (is.read() == -1) break;
             }
         } catch (IOException e) {
-            LOGGER.atWarn().addArgument(e.getMessage()).log("Failed to read request body: {}");
+            LOGGER.log(Level.WARNING, "Failed to read request body: %s", e.getMessage());
         }
     }
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(Application.class.getName());
     private static final byte[] ROOT_RESOURCE = ("Hello World! \n").getBytes(UTF_8);
     private static final byte[] EMPTY_RESPONSE_BODY = new byte[0];
     private static final InetSocketAddress ADDRESS = new InetSocketAddress("0.0.0.0", 9000);

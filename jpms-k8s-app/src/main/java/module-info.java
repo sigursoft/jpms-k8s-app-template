@@ -1,6 +1,4 @@
 module jpms.k8s.app {
-    // logging
-    requires java.logging;
     // http server
     requires jdk.httpserver;
     // http client
@@ -8,7 +6,6 @@ module jpms.k8s.app {
     // for https
     requires jdk.crypto.ec;
     // slf4j
-    requires org.slf4j;
-    requires org.slf4j.jul;
+    requires org.slf4j.jdk.platform.logging;
     requires com.fasterxml.jackson.core;
 }
