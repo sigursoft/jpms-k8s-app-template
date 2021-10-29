@@ -5,13 +5,12 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -28,13 +27,13 @@ public class Application {
             String path = exchange.getRequestURI().toString();
             if (ROOT_CONTEXT_PATH.equals(path)) {
                 switch (exchange.getRequestMethod()) {
-                    case GET     ->  respond(exchange, OK, ROOT_RESOURCE);
-                    case HEAD    ->  respond(exchange, OK, EMPTY_RESPONSE_BODY);
+                    case GET -> respond(exchange, OK, ROOT_RESOURCE);
+                    case HEAD -> respond(exchange, OK, EMPTY_RESPONSE_BODY);
                     case OPTIONS -> {
                         exchange.getResponseHeaders().add(ALLOW, ALLOWED_METHODS);
                         respond(exchange, OK, EMPTY_RESPONSE_BODY);
                     }
-                    default    -> {
+                    default -> {
                         exchange.getResponseHeaders().add(ALLOW, ALLOWED_METHODS);
                         respond(exchange, METHOD_NOT_ALLOWED, EMPTY_RESPONSE_BODY);
                     }
@@ -43,6 +42,7 @@ public class Application {
                 respond(exchange, NOT_FOUND, EMPTY_RESPONSE_BODY);
             }
         });
+        LOGGER.info("Server started");
     }
 
     private static void forEach(HttpHandler handler) {
@@ -50,7 +50,7 @@ public class Application {
         try {
             httpServer = HttpServer.create(ADDRESS, BACKLOG);
         } catch (IOException e) {
-            LOGGER.warn("Failed to create HTTP server: " + e.getMessage());
+            LOGGER.warn("Failed to create HTTP server: {}", e.getMessage());
             return;
         }
         var context = httpServer.createContext(ROOT_CONTEXT_PATH);
@@ -64,7 +64,7 @@ public class Application {
     }
 
     private static void respond(HttpExchange exchange, final int httpStatus, final byte[] message) {
-        // Closing an exchange without consuming all of the request body is not an error but may make the underlying
+        // Closing an exchange without consuming all request body is not an error but may make the underlying
         // TCP connection unusable for following exchanges (think HTTP 1.1 pipelining).
         consumeInputStream(exchange.getRequestBody());
         exchange.getResponseHeaders().add(CONTENT_TYPE, TEXT_PLAIN);
@@ -76,7 +76,7 @@ public class Application {
                 exchange.sendResponseHeaders(httpStatus, -1);
             }
         } catch (IOException e) {
-            LOGGER.warn("Failed to write response: " + e.getMessage());
+            LOGGER.warn("Failed to write response: {}", e.getMessage());
         }
     }
 
@@ -89,7 +89,7 @@ public class Application {
                 if (is.read() == -1) break;
             }
         } catch (IOException e) {
-            LOGGER.warn("Failed to read request body: " + e.getMessage());
+            LOGGER.warn("Failed to read request body: {}", e.getMessage());
         }
     }
 
@@ -111,5 +111,4 @@ public class Application {
     private static final int NOT_FOUND = 404;
     private static final int METHOD_NOT_ALLOWED = 405;
     private static final int NOW = 0;
-
 }
