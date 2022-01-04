@@ -5,7 +5,8 @@ module jpms.k8s.app {
     requires java.net.http;
     // for https
     requires jdk.crypto.ec;
-    // slf4j
+    // logging
     requires org.slf4j.jdk.platform.logging;
+    // JSON
     requires com.fasterxml.jackson.core;
 }
