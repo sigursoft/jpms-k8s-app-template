@@ -1,4 +1,4 @@
-FROM debian:10-slim
+FROM debian:11-slim
 
 ARG JVM_OPTS
 ARG MODULE
@@ -8,8 +8,7 @@ ENV JAVA_OPTS=$JVM_OPTS
 ENV APP_MODULE=$MODULE
 ENV MAIN_CLASS=$CLASS
 
-RUN mkdir /app && mkdir /app/config
-
+RUN mkdir -p /app/config
 WORKDIR /app
 
 VOLUME /app/config
@@ -17,4 +16,4 @@ VOLUME /app/config
 ENTRYPOINT ["/bin/bash","-c"]
 CMD ["/app/jvm/bin/java ${JVM_OPTS} -m ${APP_MODULE}/${MAIN_CLASS}"]
 
-ADD ./target/jlink jvm
+COPY ./target/jlink jvm
