@@ -6,7 +6,9 @@ module jpms.k8s.app {
     // for https
     requires jdk.crypto.ec;
     // logging
+    requires java.xml;
     requires org.slf4j.jdk.platform.logging;
+    requires ch.qos.logback.classic;
     // JSON
     requires com.fasterxml.jackson.core;
 }
