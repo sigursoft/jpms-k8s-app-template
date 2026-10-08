@@ -2,6 +2,7 @@ module jpms.k8s.app {
     // http server
     requires jdk.httpserver;
     // logging
+    requires org.slf4j;
     requires org.slf4j.jdk.platform.logging;
     requires ch.qos.logback.classic;
     // JSON

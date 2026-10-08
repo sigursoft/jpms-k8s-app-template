@@ -6,18 +6,19 @@ import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import static java.lang.System.Logger.Level;
-
 public class Application {
 
-    private static final System.Logger LOGGER = System.getLogger(Application.class.getName());
+    private static final Logger LOGGER = LoggerFactory.getLogger(Application.class);
 
     public static void main(String[] args) {
-        LOGGER.log(Level.INFO, "Starting server");
+        LOGGER.info("Starting server");
         configureServerLimits();
         ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
         HttpServer httpServer = tryStart(listenAddress(), executor);
@@ -32,7 +33,7 @@ public class Application {
             httpServer.stop(SHUTDOWN_GRACE_SECONDS);
             executor.close();
         }));
-        LOGGER.log(Level.INFO, "Server started on port {0}", String.valueOf(httpServer.getAddress().getPort()));
+        LOGGER.info("Server started on port {}", httpServer.getAddress().getPort());
     }
 
     /**
@@ -53,7 +54,7 @@ public class Application {
             return new InetSocketAddress(ANY_ADDRESS, Integer.parseInt(port.strip()));
         } catch (IllegalArgumentException e) {
             // Covers both a malformed number and a port outside 0..65535
-            LOGGER.log(Level.WARNING, "Ignoring invalid {0} value ''{1}'', using {2}", PORT_ENV, port, String.valueOf(DEFAULT_PORT));
+            LOGGER.warn("Ignoring invalid {} value '{}', using {}", PORT_ENV, port, DEFAULT_PORT);
             return new InetSocketAddress(ANY_ADDRESS, DEFAULT_PORT);
         }
     }
@@ -65,7 +66,7 @@ public class Application {
         try {
             return start(address, executor);
         } catch (IOException e) {
-            LOGGER.log(Level.ERROR, "Failed to create HTTP server: {0}", e.getMessage());
+            LOGGER.error("Failed to create HTTP server: {}", e.getMessage());
             return null;
         }
     }
@@ -81,7 +82,7 @@ public class Application {
             try {
                 handle(exchange, repository);
             } catch (RuntimeException e) {
-                LOGGER.log(Level.ERROR, "Failed to handle request", e);
+                LOGGER.error("Failed to handle request", e);
                 respond(exchange, HttpStatus.INTERNAL_SERVER_ERROR, JsonCodec.writeError("Internal server error"));
             }
         });
@@ -221,7 +222,7 @@ public class Application {
         try {
             body = exchange.getRequestBody().readNBytes(MAX_REQUEST_BODY_BYTES + 1);
         } catch (IOException e) {
-            LOGGER.log(Level.WARNING, "Failed to read request body: {0}", e.getMessage());
+            LOGGER.warn("Failed to read request body: {}", e.getMessage());
             return new CreateResult.Rejected(HttpStatus.BAD_REQUEST, "Failed to read request body");
         }
         if (body.length > MAX_REQUEST_BODY_BYTES) {
@@ -260,7 +261,7 @@ public class Application {
                 exchange.sendResponseHeaders(status.code, -1);
             }
         } catch (IOException e) {
-            LOGGER.log(Level.WARNING, "Failed to write response: {0}", e.getMessage());
+            LOGGER.warn("Failed to write response: {}", e.getMessage());
         }
     }
 
