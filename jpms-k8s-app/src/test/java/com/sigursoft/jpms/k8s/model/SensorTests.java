@@ -62,4 +62,11 @@ public class SensorTests {
         assertThrows(IllegalArgumentException.class, () -> new Sensor("a", null));
         assertEquals("", new Sensor("a", "").description());
     }
+
+    @Test
+    public void testSensorRejectsTooLongDescription() {
+        String longest = "x".repeat(Sensor.MAX_DESCRIPTION_LENGTH);
+        assertEquals(longest, new Sensor("a", longest).description());
+        assertThrows(IllegalArgumentException.class, () -> new Sensor("a", longest + "x"));
+    }
 }

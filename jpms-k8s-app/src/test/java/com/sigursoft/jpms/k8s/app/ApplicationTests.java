@@ -4,14 +4,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,15 +29,18 @@ public class ApplicationTests {
     private static final String SENSOR_JSON = "{\"id\":\"s-001\",\"description\":\"Temperature sensor\"}";
 
     private HttpServer server;
+    private ExecutorService executor;
 
     @BeforeEach
     public void startServer() throws IOException {
-        server = Application.start(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+        executor = Executors.newVirtualThreadPerTaskExecutor();
+        server = Application.start(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), executor);
     }
 
     @AfterEach
     public void stopServer() {
         server.stop(0);
+        executor.close();
     }
 
     private HttpResponse<String> send(String method, String path, String contentType, String body)
@@ -140,5 +149,48 @@ public class ApplicationTests {
     @Test
     public void testMissingSensorIsNotFound() throws Exception {
         assertJson(404, "{\"error\":\"Sensor not found: nope\"}", get("/sensors/nope"));
+    }
+
+    @Test
+    public void testEmptySensorIdIsNotFound() throws Exception {
+        assertJson(404, "{\"error\":\"Resource not found: /sensors/\"}", get("/sensors/"));
+    }
+
+    @Test
+    public void testCreateRejectsTooLongDescription() throws Exception {
+        String body = "{\"id\":\"a\",\"description\":\"" + "x".repeat(1025) + "\"}";
+        assertJson(400, "{\"error\":\"Property 'description' must be at most 1024 characters\"}", post(body));
+    }
+
+    @Test
+    public void testCreateRejectsDuplicateKeys() throws Exception {
+        var response = post("{\"id\":\"a\",\"id\":\"b\",\"description\":\"d\"}");
+        assertEquals(400, response.statusCode());
+        assertTrue(response.body().startsWith("{\"error\":\"Malformed JSON"), response.body());
+    }
+
+    @Test
+    public void testOversizedBodyDoesNotBreakFollowingRequests() throws Exception {
+        post("{\"id\":\"a\",\"description\":\"" + "x".repeat(200 * 1024) + "\"}");
+        assertJson(200, "[]", get("/sensors"));
+    }
+
+    @Test
+    public void testStartFailureIsLoggedWithReason() throws Exception {
+        var logger = (Logger) org.slf4j.LoggerFactory.getLogger(Application.class.getName());
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try (var occupied = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+             var otherExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var address = new InetSocketAddress(InetAddress.getLoopbackAddress(), occupied.getLocalPort());
+            assertNull(Application.tryStart(address, otherExecutor));
+        } finally {
+            logger.detachAppender(appender);
+        }
+        String message = appender.list.getLast().getFormattedMessage();
+        assertTrue(message.startsWith("Failed to create HTTP server: "), message);
+        assertFalse(message.contains("%s") || message.contains("{0}"), message);
+        assertTrue(message.length() > "Failed to create HTTP server: ".length(), message);
     }
 }

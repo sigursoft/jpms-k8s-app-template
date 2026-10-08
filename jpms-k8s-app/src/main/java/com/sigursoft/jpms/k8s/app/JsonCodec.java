@@ -1,6 +1,7 @@
 package com.sigursoft.jpms.k8s.app;
 
 import com.sigursoft.jpms.k8s.model.Sensor;
+import tools.jackson.core.StreamReadFeature;
 import tools.jackson.core.exc.StreamReadException;
 import tools.jackson.core.json.JsonFactory;
 import tools.jackson.core.json.JsonReadFeature;
@@ -22,6 +23,7 @@ final class JsonCodec {
 
     private static final JsonMapper MAPPER = JsonMapper.builder(JsonFactory.builder()
                     .enable(JsonReadFeature.ALLOW_JAVA_COMMENTS)
+                    .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
                     .build())
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)

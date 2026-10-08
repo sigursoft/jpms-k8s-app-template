@@ -89,6 +89,11 @@ public class JsonCodecTests {
     }
 
     @Test
+    public void testReadSensorRejectsDuplicateKeys() {
+        assertTrue(readError("{\"id\":\"a\",\"id\":\"b\",\"description\":\"d\"}").startsWith("Malformed JSON"));
+    }
+
+    @Test
     public void testWriteSensor() {
         assertEquals("{\"id\":\"s-001\",\"description\":\"Say \\\"hi\\\"\"}",
                 new String(JsonCodec.writeSensor(new Sensor("s-001", "Say \"hi\"")), UTF_8));

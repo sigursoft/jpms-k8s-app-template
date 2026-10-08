@@ -5,7 +5,6 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
@@ -19,13 +18,13 @@ public class Application {
 
     public static void main(String[] args) {
         LOGGER.log(Level.INFO, "Starting server");
+        configureServerLimits();
         ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-        HttpServer httpServer;
-        try {
-            httpServer = start(ADDRESS, executor);
-        } catch (IOException e) {
-            LOGGER.log(Level.WARNING, "Failed to create HTTP server: %s", e.getMessage());
+        HttpServer httpServer = tryStart(listenAddress(), executor);
+        if (httpServer == null) {
             executor.close();
+            // A non-zero status lets Kubernetes see the failure and restart the pod.
+            System.exit(1);
             return;
         }
         // Let in-flight requests finish: stop accepting exchanges, then wait for the running handlers.
@@ -33,14 +32,42 @@ public class Application {
             httpServer.stop(SHUTDOWN_GRACE_SECONDS);
             executor.close();
         }));
-        LOGGER.log(Level.INFO, "Server started");
+        LOGGER.log(Level.INFO, "Server started on port {0}", String.valueOf(httpServer.getAddress().getPort()));
     }
 
     /**
-     * Starts a server with an empty sensor repository bound to the given address.
+     * Bounds how long a client may take to send a request or read a response. The JDK server waits forever by
+     * default, which lets slow clients hold connections open. Values given on the command line take precedence.
      */
-    static HttpServer start(InetSocketAddress address) throws IOException {
-        return start(address, Executors.newVirtualThreadPerTaskExecutor());
+    private static void configureServerLimits() {
+        System.getProperties().putIfAbsent("sun.net.httpserver.maxReqTime", MAX_REQUEST_SECONDS);
+        System.getProperties().putIfAbsent("sun.net.httpserver.maxRspTime", MAX_RESPONSE_SECONDS);
+    }
+
+    private static InetSocketAddress listenAddress() {
+        String port = System.getenv(PORT_ENV);
+        if (port == null || port.isBlank()) {
+            return new InetSocketAddress(ANY_ADDRESS, DEFAULT_PORT);
+        }
+        try {
+            return new InetSocketAddress(ANY_ADDRESS, Integer.parseInt(port.strip()));
+        } catch (IllegalArgumentException e) {
+            // Covers both a malformed number and a port outside 0..65535
+            LOGGER.log(Level.WARNING, "Ignoring invalid {0} value ''{1}'', using {2}", PORT_ENV, port, String.valueOf(DEFAULT_PORT));
+            return new InetSocketAddress(ANY_ADDRESS, DEFAULT_PORT);
+        }
+    }
+
+    /**
+     * Starts the server, logging the reason and returning {@code null} if it cannot be started.
+     */
+    static HttpServer tryStart(InetSocketAddress address, ExecutorService executor) {
+        try {
+            return start(address, executor);
+        } catch (IOException e) {
+            LOGGER.log(Level.ERROR, "Failed to create HTTP server: {0}", e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -72,7 +99,8 @@ public class Application {
         CONFLICT(409),
         CONTENT_TOO_LARGE(413),
         UNSUPPORTED_MEDIA_TYPE(415),
-        INTERNAL_SERVER_ERROR(500);
+        INTERNAL_SERVER_ERROR(500),
+        INSUFFICIENT_STORAGE(507);
 
         private final int code;
 
@@ -115,7 +143,7 @@ public class Application {
             return new Route.Root();
         } else if (SENSORS_PATH.equals(path)) {
             return new Route.Sensors();
-        } else if (path.startsWith(SENSOR_PATH_PREFIX)) {
+        } else if (path.startsWith(SENSOR_PATH_PREFIX) && path.length() > SENSOR_PATH_PREFIX.length()) {
             return new Route.SensorById(path.substring(SENSOR_PATH_PREFIX.length()));
         }
         return new Route.Unknown(path);
@@ -162,8 +190,14 @@ public class Application {
 
     private static void createSensor(HttpExchange exchange, SensorRepository repository) {
         CreateResult result = parseSensor(exchange);
-        if (result instanceof CreateResult.Created(var sensor) && !repository.add(sensor)) {
-            result = new CreateResult.Rejected(HttpStatus.CONFLICT, "Sensor already exists: " + sensor.id());
+        if (result instanceof CreateResult.Created(var sensor)) {
+            result = switch (repository.add(sensor)) {
+                case ADDED -> result;
+                case DUPLICATE -> new CreateResult.Rejected(HttpStatus.CONFLICT,
+                        "Sensor already exists: " + sensor.id());
+                case FULL -> new CreateResult.Rejected(HttpStatus.INSUFFICIENT_STORAGE,
+                        "Sensor limit reached: " + repository.maxSize());
+            };
         }
         switch (result) {
             case CreateResult.Created(var sensor) -> {
@@ -187,7 +221,7 @@ public class Application {
         try {
             body = exchange.getRequestBody().readNBytes(MAX_REQUEST_BODY_BYTES + 1);
         } catch (IOException e) {
-            LOGGER.log(Level.WARNING, "Failed to read request body: %s", e.getMessage());
+            LOGGER.log(Level.WARNING, "Failed to read request body: {0}", e.getMessage());
             return new CreateResult.Rejected(HttpStatus.BAD_REQUEST, "Failed to read request body");
         }
         if (body.length > MAX_REQUEST_BODY_BYTES) {
@@ -217,9 +251,6 @@ public class Application {
     }
 
     private static void respond(HttpExchange exchange, HttpStatus status, final byte[] message) {
-        // Closing an exchange without consuming all request body is not an error but may make the underlying
-        // TCP connection unusable for following exchanges (think HTTP 1.1 pipelining).
-        consumeInputStream(exchange.getRequestBody());
         exchange.getResponseHeaders().add(CONTENT_TYPE, APPLICATION_JSON_UTF8);
         try (exchange) {
             if (message.length > 0 && Method.of(exchange.getRequestMethod()) != Method.HEAD) {
@@ -229,25 +260,18 @@ public class Application {
                 exchange.sendResponseHeaders(status.code, -1);
             }
         } catch (IOException e) {
-            LOGGER.log(Level.WARNING, "Failed to write response: %s", e.getMessage());
+            LOGGER.log(Level.WARNING, "Failed to write response: {0}", e.getMessage());
         }
     }
 
-    private static void consumeInputStream(final InputStream is) {
-        if (is == null)
-            return;
-        try {
-            while (true) {
-                /* null loop */
-                if (is.read() == -1) break;
-            }
-        } catch (IOException e) {
-            LOGGER.log(Level.WARNING, "Failed to read request body: %s", e.getMessage());
-        }
-    }
+
     private static final byte[] ROOT_RESOURCE = JsonCodec.writeMessage("Hello World!");
     private static final byte[] EMPTY_RESPONSE_BODY = new byte[0];
-    private static final InetSocketAddress ADDRESS = new InetSocketAddress("0.0.0.0", 9000);
+    private static final String ANY_ADDRESS = "0.0.0.0";
+    private static final String PORT_ENV = "PORT";
+    private static final int DEFAULT_PORT = 9000;
+    private static final String MAX_REQUEST_SECONDS = "30";
+    private static final String MAX_RESPONSE_SECONDS = "30";
     private static final int BACKLOG = 100;
     private static final int MAX_REQUEST_BODY_BYTES = 64 * 1024;
     private static final String ROOT_CONTEXT_PATH = "/";
