@@ -16,6 +16,7 @@
         <app.main.class>com.sigursoft.jpms.k8s.app.Application</app.main.class>
         <docker.buildArg.MODULE>jpms.k8s.app</docker.buildArg.MODULE>
         <docker.buildArg.CLASS>${app.main.class}</docker.buildArg.CLASS>
+        <jlink.output>${project.build.directory}/jlink</jlink.output>
     </properties>
 
     <dependencies>
@@ -32,12 +33,12 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.5.19</version>
+            <version>1.6.5</version>
         </dependency>
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-core</artifactId>
-            <version>2.18.11</version>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>3.2.3</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -74,6 +75,56 @@
                         <configuration>
                             <includeScope>compile</includeScope>
                             <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- jlink refuses to overwrite an existing image, so remove the previous one first -->
+            <plugin>
+                <artifactId>maven-clean-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>clean-jlink-image</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                        <configuration>
+                            <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                            <filesets>
+                                <fileset>
+                                    <directory>${jlink.output}</directory>
+                                </fileset>
+                            </filesets>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Builds a minimal runtime image (JVM + application modules) copied into the Docker image -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>jlink</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>${java.home}/bin/jlink</executable>
+                            <arguments>
+                                <argument>--module-path</argument>
+                                <argument>${project.build.directory}/${project.build.finalName}.jar${path.separator}${project.build.directory}/lib</argument>
+                                <argument>--add-modules</argument>
+                                <argument>${docker.buildArg.MODULE}</argument>
+                                <argument>--strip-debug</argument>
+                                <argument>--no-header-files</argument>
+                                <argument>--no-man-pages</argument>
+                                <argument>--compress=zip-9</argument>
+                                <argument>--output</argument>
+                                <argument>${jlink.output}</argument>
+                            </arguments>
                         </configuration>
                     </execution>
                 </executions>

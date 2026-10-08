@@ -8,5 +8,7 @@ module jpms.k8s.app {
     requires org.slf4j.jdk.platform.logging;
     requires ch.qos.logback.classic;
     // JSON
-    requires com.fasterxml.jackson.core;
+    requires tools.jackson.databind;
+    // records are (de)serialized reflectively
+    opens com.sigursoft.jpms.k8s.model to tools.jackson.databind;
 }

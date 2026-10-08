@@ -14,6 +14,6 @@ WORKDIR /app
 VOLUME /app/config
 
 ENTRYPOINT ["/bin/bash","-c"]
-CMD ["/app/jvm/bin/java ${JVM_OPTS} -m ${APP_MODULE}/${MAIN_CLASS}"]
+CMD ["/app/jvm/bin/java ${JAVA_OPTS} -m ${APP_MODULE}/${MAIN_CLASS}"]
 
 COPY ./target/jlink jvm
