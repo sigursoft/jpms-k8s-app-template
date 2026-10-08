@@ -41,4 +41,25 @@ public class SensorTests {
         assertTrue(str.contains("id1"));
         assertTrue(str.contains("desc"));
     }
+
+    @Test
+    public void testSensorRejectsInvalidId() {
+        assertThrows(IllegalArgumentException.class, () -> new Sensor(null, "desc"));
+        assertThrows(IllegalArgumentException.class, () -> new Sensor("", "desc"));
+        assertThrows(IllegalArgumentException.class, () -> new Sensor("a/b", "desc"));
+        assertThrows(IllegalArgumentException.class, () -> new Sensor("a".repeat(65), "desc"));
+    }
+
+    @Test
+    public void testSensorAcceptsBoundaryIds() {
+        assertEquals("a", new Sensor("a", "desc").id());
+        assertEquals(64, new Sensor("a".repeat(64), "desc").id().length());
+        assertEquals("A.b_c-1", new Sensor("A.b_c-1", "desc").id());
+    }
+
+    @Test
+    public void testSensorRejectsMissingDescription() {
+        assertThrows(IllegalArgumentException.class, () -> new Sensor("a", null));
+        assertEquals("", new Sensor("a", "").description());
+    }
 }

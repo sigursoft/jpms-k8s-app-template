@@ -6,6 +6,7 @@ import tools.jackson.core.json.JsonFactory;
 import tools.jackson.core.json.JsonReadFeature;
 import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.exc.ValueInstantiationException;
 import tools.jackson.databind.cfg.CoercionAction;
 import tools.jackson.databind.cfg.CoercionInputShape;
 import tools.jackson.databind.json.JsonMapper;
@@ -13,7 +14,6 @@ import tools.jackson.databind.type.LogicalType;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * Converts between JSON and the application model using Jackson databind.
@@ -32,8 +32,6 @@ final class JsonCodec {
                     .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail))
             .build();
 
-    private static final Pattern VALID_ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
-
     private JsonCodec() {
     }
 
@@ -49,6 +47,10 @@ final class JsonCodec {
             sensor = MAPPER.readValue(json, Sensor.class);
         } catch (StreamReadException e) {
             throw new IllegalArgumentException("Malformed JSON: " + e.getOriginalMessage(), e);
+        } catch (ValueInstantiationException e) {
+            // The Sensor constructor rejected the values; its message is safe to report to the client.
+            throw new IllegalArgumentException(
+                    e.getCause() instanceof IllegalArgumentException cause ? cause.getMessage() : EXPECTED_OBJECT, e);
         } catch (DatabindException e) {
             // Report the offending property without exposing internal type names to the client.
             String property = e.getPath().isEmpty() ? null : e.getPath().getFirst().getPropertyName();
@@ -58,13 +60,6 @@ final class JsonCodec {
         }
         if (sensor == null) {
             throw new IllegalArgumentException(EXPECTED_OBJECT);
-        }
-        if (sensor.id() == null || !VALID_ID.matcher(sensor.id()).matches()) {
-            throw new IllegalArgumentException(
-                    "Property 'id' is required and must match " + VALID_ID.pattern());
-        }
-        if (sensor.description() == null) {
-            throw new IllegalArgumentException("Property 'description' is required");
         }
         return sensor;
     }

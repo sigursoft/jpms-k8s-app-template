@@ -8,8 +8,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
 
 import static java.lang.System.Logger.Level;
 
@@ -19,14 +19,20 @@ public class Application {
 
     public static void main(String[] args) {
         LOGGER.log(Level.INFO, "Starting server");
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
         HttpServer httpServer;
         try {
-            httpServer = start(ADDRESS);
+            httpServer = start(ADDRESS, executor);
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Failed to create HTTP server: %s", e.getMessage());
+            executor.close();
             return;
         }
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> httpServer.stop(NOW)));
+        // Let in-flight requests finish: stop accepting exchanges, then wait for the running handlers.
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            httpServer.stop(SHUTDOWN_GRACE_SECONDS);
+            executor.close();
+        }));
         LOGGER.log(Level.INFO, "Server started");
     }
 
@@ -34,6 +40,14 @@ public class Application {
      * Starts a server with an empty sensor repository bound to the given address.
      */
     static HttpServer start(InetSocketAddress address) throws IOException {
+        return start(address, Executors.newVirtualThreadPerTaskExecutor());
+    }
+
+    /**
+     * Starts a server with an empty sensor repository that serves requests on the given executor.
+     * The caller owns the executor and is responsible for closing it.
+     */
+    static HttpServer start(InetSocketAddress address, ExecutorService executor) throws IOException {
         var repository = new SensorRepository();
         HttpServer httpServer = HttpServer.create(address, BACKLOG);
         httpServer.createContext(ROOT_CONTEXT_PATH).setHandler(exchange -> {
@@ -41,81 +55,159 @@ public class Application {
                 handle(exchange, repository);
             } catch (RuntimeException e) {
                 LOGGER.log(Level.ERROR, "Failed to handle request", e);
-                respond(exchange, INTERNAL_SERVER_ERROR, JsonCodec.writeError("Internal server error"));
+                respond(exchange, HttpStatus.INTERNAL_SERVER_ERROR, JsonCodec.writeError("Internal server error"));
             }
         });
-        httpServer.setExecutor(threadPoolExecutor);
+        httpServer.setExecutor(executor);
         httpServer.start();
         return httpServer;
     }
 
-    private static void handle(HttpExchange exchange, SensorRepository repository) {
-        String path = exchange.getRequestURI().getPath();
-        String method = exchange.getRequestMethod();
+    private enum HttpStatus {
+        OK(200),
+        CREATED(201),
+        BAD_REQUEST(400),
+        NOT_FOUND(404),
+        METHOD_NOT_ALLOWED(405),
+        CONFLICT(409),
+        CONTENT_TOO_LARGE(413),
+        UNSUPPORTED_MEDIA_TYPE(415),
+        INTERNAL_SERVER_ERROR(500);
+
+        private final int code;
+
+        HttpStatus(int code) {
+            this.code = code;
+        }
+    }
+
+    private enum Method {
+        GET, HEAD, POST, OPTIONS,
+        /** Any method this server does not implement. */
+        OTHER;
+
+        static Method of(String name) {
+            for (Method method : values()) {
+                if (method.name().equals(name)) {
+                    return method;
+                }
+            }
+            return OTHER;
+        }
+    }
+
+    private sealed interface Route {
+        record Root() implements Route {
+        }
+
+        record Sensors() implements Route {
+        }
+
+        record SensorById(String id) implements Route {
+        }
+
+        record Unknown(String path) implements Route {
+        }
+    }
+
+    private static Route route(String path) {
         if (ROOT_CONTEXT_PATH.equals(path)) {
-            switch (method) {
-                case GET -> respond(exchange, OK, ROOT_RESOURCE);
-                case HEAD -> respond(exchange, OK, EMPTY_RESPONSE_BODY);
-                default -> respondToOtherMethod(exchange, method, ROOT_ALLOWED_METHODS);
-            }
+            return new Route.Root();
         } else if (SENSORS_PATH.equals(path)) {
-            switch (method) {
-                case GET -> respond(exchange, OK, JsonCodec.writeSensors(repository.findAll()));
-                case POST -> createSensor(exchange, repository);
-                default -> respondToOtherMethod(exchange, method, SENSORS_ALLOWED_METHODS);
-            }
+            return new Route.Sensors();
         } else if (path.startsWith(SENSOR_PATH_PREFIX)) {
-            String id = path.substring(SENSOR_PATH_PREFIX.length());
-            switch (method) {
-                case GET -> repository.find(id).ifPresentOrElse(
-                        sensor -> respond(exchange, OK, JsonCodec.writeSensor(sensor)),
-                        () -> respond(exchange, NOT_FOUND, JsonCodec.writeError("Sensor not found: " + id)));
-                default -> respondToOtherMethod(exchange, method, SENSOR_ALLOWED_METHODS);
+            return new Route.SensorById(path.substring(SENSOR_PATH_PREFIX.length()));
+        }
+        return new Route.Unknown(path);
+    }
+
+    private static void handle(HttpExchange exchange, SensorRepository repository) {
+        Method method = Method.of(exchange.getRequestMethod());
+        switch (route(exchange.getRequestURI().getPath())) {
+            case Route.Root _ -> {
+                switch (method) {
+                    case GET -> respond(exchange, HttpStatus.OK, ROOT_RESOURCE);
+                    case HEAD -> respond(exchange, HttpStatus.OK, EMPTY_RESPONSE_BODY);
+                    default -> respondToOtherMethod(exchange, method, ROOT_ALLOWED_METHODS);
+                }
             }
-        } else {
-            respond(exchange, NOT_FOUND, JsonCodec.writeError("Resource not found: " + path));
+            case Route.Sensors _ -> {
+                switch (method) {
+                    case GET -> respond(exchange, HttpStatus.OK, JsonCodec.writeSensors(repository.findAll()));
+                    case POST -> createSensor(exchange, repository);
+                    default -> respondToOtherMethod(exchange, method, SENSORS_ALLOWED_METHODS);
+                }
+            }
+            case Route.SensorById(var id) -> {
+                switch (method) {
+                    case GET -> repository.find(id).ifPresentOrElse(
+                            sensor -> respond(exchange, HttpStatus.OK, JsonCodec.writeSensor(sensor)),
+                            () -> respond(exchange, HttpStatus.NOT_FOUND,
+                                    JsonCodec.writeError("Sensor not found: " + id)));
+                    default -> respondToOtherMethod(exchange, method, SENSOR_ALLOWED_METHODS);
+                }
+            }
+            case Route.Unknown(var path) ->
+                    respond(exchange, HttpStatus.NOT_FOUND, JsonCodec.writeError("Resource not found: " + path));
+        }
+    }
+
+    private sealed interface CreateResult {
+        record Created(Sensor sensor) implements CreateResult {
+        }
+
+        record Rejected(HttpStatus status, String message) implements CreateResult {
         }
     }
 
     private static void createSensor(HttpExchange exchange, SensorRepository repository) {
+        CreateResult result = parseSensor(exchange);
+        if (result instanceof CreateResult.Created(var sensor) && !repository.add(sensor)) {
+            result = new CreateResult.Rejected(HttpStatus.CONFLICT, "Sensor already exists: " + sensor.id());
+        }
+        switch (result) {
+            case CreateResult.Created(var sensor) -> {
+                exchange.getResponseHeaders().add(LOCATION, SENSOR_PATH_PREFIX + sensor.id());
+                respond(exchange, HttpStatus.CREATED, JsonCodec.writeSensor(sensor));
+            }
+            case CreateResult.Rejected(var status, var message) ->
+                    respond(exchange, status, JsonCodec.writeError(message));
+        }
+    }
+
+    /**
+     * Reads and validates the sensor in the request body without touching the repository or the response.
+     */
+    private static CreateResult parseSensor(HttpExchange exchange) {
         if (!isJson(exchange.getRequestHeaders().getFirst(CONTENT_TYPE))) {
-            respond(exchange, UNSUPPORTED_MEDIA_TYPE, JsonCodec.writeError("Content-Type must be " + APPLICATION_JSON));
-            return;
+            return new CreateResult.Rejected(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Content-Type must be " + APPLICATION_JSON);
         }
         byte[] body;
         try {
             body = exchange.getRequestBody().readNBytes(MAX_REQUEST_BODY_BYTES + 1);
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Failed to read request body: %s", e.getMessage());
-            respond(exchange, BAD_REQUEST, JsonCodec.writeError("Failed to read request body"));
-            return;
+            return new CreateResult.Rejected(HttpStatus.BAD_REQUEST, "Failed to read request body");
         }
         if (body.length > MAX_REQUEST_BODY_BYTES) {
-            respond(exchange, CONTENT_TOO_LARGE,
-                    JsonCodec.writeError("Request body exceeds " + MAX_REQUEST_BODY_BYTES + " bytes"));
-            return;
+            return new CreateResult.Rejected(HttpStatus.CONTENT_TOO_LARGE,
+                    "Request body exceeds " + MAX_REQUEST_BODY_BYTES + " bytes");
         }
-        Sensor sensor;
         try {
-            sensor = JsonCodec.readSensor(body);
+            return new CreateResult.Created(JsonCodec.readSensor(body));
         } catch (IllegalArgumentException e) {
-            respond(exchange, BAD_REQUEST, JsonCodec.writeError(e.getMessage()));
-            return;
+            return new CreateResult.Rejected(HttpStatus.BAD_REQUEST, e.getMessage());
         }
-        if (!repository.add(sensor)) {
-            respond(exchange, CONFLICT, JsonCodec.writeError("Sensor already exists: " + sensor.id()));
-            return;
-        }
-        exchange.getResponseHeaders().add(LOCATION, SENSOR_PATH_PREFIX + sensor.id());
-        respond(exchange, CREATED, JsonCodec.writeSensor(sensor));
     }
 
-    private static void respondToOtherMethod(HttpExchange exchange, String method, String allowedMethods) {
+    private static void respondToOtherMethod(HttpExchange exchange, Method method, String allowedMethods) {
         exchange.getResponseHeaders().add(ALLOW, allowedMethods);
-        if (OPTIONS.equals(method)) {
-            respond(exchange, OK, EMPTY_RESPONSE_BODY);
+        if (method == Method.OPTIONS) {
+            respond(exchange, HttpStatus.OK, EMPTY_RESPONSE_BODY);
         } else {
-            respond(exchange, METHOD_NOT_ALLOWED, JsonCodec.writeError("Method not allowed: " + method));
+            respond(exchange, HttpStatus.METHOD_NOT_ALLOWED,
+                    JsonCodec.writeError("Method not allowed: " + exchange.getRequestMethod()));
         }
     }
 
@@ -124,17 +216,17 @@ public class Application {
                 && contentType.split(";", 2)[0].strip().toLowerCase(Locale.ROOT).equals(APPLICATION_JSON);
     }
 
-    private static void respond(HttpExchange exchange, final int httpStatus, final byte[] message) {
+    private static void respond(HttpExchange exchange, HttpStatus status, final byte[] message) {
         // Closing an exchange without consuming all request body is not an error but may make the underlying
         // TCP connection unusable for following exchanges (think HTTP 1.1 pipelining).
         consumeInputStream(exchange.getRequestBody());
         exchange.getResponseHeaders().add(CONTENT_TYPE, APPLICATION_JSON_UTF8);
         try (exchange) {
-            if (message.length > 0 && !HEAD.equals(exchange.getRequestMethod())) {
-                exchange.sendResponseHeaders(httpStatus, message.length);
+            if (message.length > 0 && Method.of(exchange.getRequestMethod()) != Method.HEAD) {
+                exchange.sendResponseHeaders(status.code, message.length);
                 exchange.getResponseBody().write(message);
             } else {
-                exchange.sendResponseHeaders(httpStatus, -1);
+                exchange.sendResponseHeaders(status.code, -1);
             }
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Failed to write response: %s", e.getMessage());
@@ -156,16 +248,11 @@ public class Application {
     private static final byte[] ROOT_RESOURCE = JsonCodec.writeMessage("Hello World!");
     private static final byte[] EMPTY_RESPONSE_BODY = new byte[0];
     private static final InetSocketAddress ADDRESS = new InetSocketAddress("0.0.0.0", 9000);
-    private static final ThreadPoolExecutor threadPoolExecutor = (ThreadPoolExecutor) Executors.newFixedThreadPool(4);
     private static final int BACKLOG = 100;
     private static final int MAX_REQUEST_BODY_BYTES = 64 * 1024;
     private static final String ROOT_CONTEXT_PATH = "/";
     private static final String SENSORS_PATH = "/sensors";
     private static final String SENSOR_PATH_PREFIX = SENSORS_PATH + "/";
-    private static final String GET = "GET";
-    private static final String HEAD = "HEAD";
-    private static final String POST = "POST";
-    private static final String OPTIONS = "OPTIONS";
     private static final String ALLOW = "Allow";
     private static final String ROOT_ALLOWED_METHODS = "GET, HEAD, OPTIONS";
     private static final String SENSORS_ALLOWED_METHODS = "GET, POST, OPTIONS";
@@ -174,14 +261,5 @@ public class Application {
     private static final String LOCATION = "Location";
     private static final String APPLICATION_JSON = "application/json";
     private static final String APPLICATION_JSON_UTF8 = APPLICATION_JSON + "; charset=utf-8";
-    private static final int OK = 200;
-    private static final int CREATED = 201;
-    private static final int BAD_REQUEST = 400;
-    private static final int NOT_FOUND = 404;
-    private static final int METHOD_NOT_ALLOWED = 405;
-    private static final int CONFLICT = 409;
-    private static final int CONTENT_TOO_LARGE = 413;
-    private static final int UNSUPPORTED_MEDIA_TYPE = 415;
-    private static final int INTERNAL_SERVER_ERROR = 500;
-    private static final int NOW = 0;
+    private static final int SHUTDOWN_GRACE_SECONDS = 5;
 }
