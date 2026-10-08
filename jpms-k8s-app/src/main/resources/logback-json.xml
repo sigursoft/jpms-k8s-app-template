@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<included>
+    <!-- One JSON object per line, easy to collect from container logs -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.JsonEncoder"/>
+    </appender>
+</included>

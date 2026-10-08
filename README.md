@@ -27,9 +27,15 @@ starts Java as PID 1, so it receives SIGTERM directly and drains in-flight reque
 | Setting | Default | Description |
 |---|---|---|
 | `PORT` environment variable | `9000` | Port the server listens on |
-| `LOG_LEVEL` environment variable | `INFO` | Root log level (`DEBUG` also logs every HTTP exchange) |
+| `LOG_LEVEL` environment variable | `INFO` | Root log level (`DEBUG`, `TRACE` and so on) |
+| `HTTP_LOG_LEVEL` environment variable | `INFO` | Level of the JDK HTTP server's own logger, which writes every exchange at `DEBUG` |
+| `LOG_FORMAT` environment variable | `text` | `text` (one line per event, ISO-8601 UTC timestamps, stack traces limited to 20 frames) or `json` (one JSON object per line, for log collectors). Any other value makes logback print warnings and the application logs nothing |
 | `--build-arg JVM_OPTS=...` | empty | JVM flags, e.g. `-Xmx128m`; exposed to the JVM as `JAVA_TOOL_OPTIONS` |
 | `-Dsun.net.httpserver.maxReqTime` / `maxRspTime` | `30` s | Time a client may take to send a request / read a response |
+
+Logging is configured in `logback.xml` (and `logback-text.xml` / `logback-json.xml`). To replace it entirely, for
+example with a mounted ConfigMap, set the runtime environment variable
+`JAVA_TOOL_OPTIONS=-Dlogback.configurationFile=/config/logback.xml`.
 
 Sensors are kept in memory (at most 10 000, descriptions up to 1024 characters), so every replica has its own state.
 

@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Environment variables:
+    LOG_FORMAT         text (default) or json; selects logback-text.xml or logback-json.xml (defines the CONSOLE appender)
+    LOG_LEVEL          root log level, default INFO
+    HTTP_LOG_LEVEL     level of the JDK HTTP server's own logger, default INFO (it logs every exchange at DEBUG)
+-->
 <configuration>
 
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%d [%thread] %-5level %logger{35} - %msg%n</pattern>
-        </encoder>
-    </appender>
+    <include resource="logback-${LOG_FORMAT:-text}.xml"/>
+
+    <logger name="com.sun.net.httpserver" level="${HTTP_LOG_LEVEL:-INFO}"/>
+    <!-- Logs a stack trace at DEBUG whenever the JVM exits -->
+    <logger name="java.lang.Runtime" level="INFO"/>
 
     <root level="${LOG_LEVEL:-INFO}">
         <appender-ref ref="CONSOLE"/>

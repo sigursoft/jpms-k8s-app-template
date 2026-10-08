@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<included>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!-- ISO-8601 in UTC; exception stack traces are limited to 20 frames -->
+            <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX,UTC} [%thread] %-5level %logger{36} - %msg%n%ex{20}</pattern>
+        </encoder>
+    </appender>
+</included>
