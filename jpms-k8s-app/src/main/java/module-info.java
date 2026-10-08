@@ -10,3 +10,4 @@ module jpms.k8s.app {
     // records are (de)serialized reflectively
     opens com.sigursoft.jpms.k8s.model to tools.jackson.databind;
 }
+

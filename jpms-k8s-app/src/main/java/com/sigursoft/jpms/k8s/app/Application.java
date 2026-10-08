@@ -17,6 +17,11 @@ public class Application {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Application.class);
 
+    /**
+     * Application entry point. Starts the HTTP server and registers a shutdown hook.
+     *
+     * @param args command-line arguments (unused)
+     */
     public static void main(String[] args) {
         LOGGER.info("Starting server");
         configureServerLimits();
